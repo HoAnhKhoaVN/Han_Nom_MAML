@@ -5,10 +5,11 @@ from    torch.nn import functional as F
 from    torch.utils.data import TensorDataset, DataLoader
 from    torch import optim
 import  numpy as np
-
+from    mobilenet import MyMobileNetV2
 from    learner import Learner
 from    copy import deepcopy
 from    typing import List, Tuple, Text
+
 
 
 
@@ -16,40 +17,32 @@ class Meta(nn.Module):
     """
     Meta Learner
     """
-    def __init__(
-            self,
-            update_lr: float,
-            meta_lr: float,
-            n_way: int,
-            k_spt: int,
-            k_qry : int,
-            task_num: int,
-            update_step: int,
-            update_step_test: int,
-            model: nn.Module
-        ):
+    def __init__(self, args, num_class = None):
         """
 
         :param args:
         """
         super(Meta, self).__init__()
 
-        self.update_lr = update_lr
-        self.meta_lr = meta_lr
-        self.n_way = n_way
-        self.k_spt = k_spt
-        self.k_qry = k_qry
-        self.task_num = task_num
-        self.update_step = update_step
-        self.update_step_test = update_step_test
-        self.net = model
+        self.update_lr = args.update_lr
+        self.meta_lr = args.meta_lr
+        self.n_way = args.n_way
+        self.k_spt = args.k_spt
+        self.k_qry = args.k_qry
+        self.task_num = args.task_num
+        self.update_step = args.update_step
+        self.update_step_test = args.update_step_test
 
-        # filtered_parameters = []
-        # params_num = []
-        # for p in filter(lambda p: p.requires_grad, model.parameters()):
-        #     filtered_parameters.append(p)
-        #     params_num.append(np.prod(p.size()))
-        # print('Trainable params num : ', sum(params_num))
+
+        # self.net = Learner(config, args.imgc, args.imgsz)
+        self.net = MyMobileNetV2(num_class)
+
+        filtered_parameters = []
+        params_num = []
+        for p in filter(lambda p: p.requires_grad, self.net.parameters()):
+            filtered_parameters.append(p)
+            params_num.append(np.prod(p.size()))
+        print('Trainable params num : ', sum(params_num))
 
         # optimizer
         # self.meta_optim = optim.Adadelta(filtered_parameters, lr=1.0, rho = 0.9, eps = 1e-05)
@@ -98,14 +91,14 @@ class Meta(nn.Module):
         for i in range(task_num): # outer
 
             # 1. run the i-th task and compute loss for k=0
-            logits = self.net(x_spt[i], vars=None, bn_training=True)
+            logits = self.net(x_spt[i])
             loss = F.cross_entropy(logits, y_spt[i])
             grad = torch.autograd.grad(loss, self.net.parameters())
             fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, self.net.parameters())))
             # this is the loss and accuracy before first update
             with torch.no_grad():
                 # [setsz, nway]
-                logits_q = self.net(x_qry[i], self.net.parameters(), bn_training=True)
+                logits_q = self.net(x_qry[i])
                 loss_q = F.cross_entropy(logits_q, y_qry[i])
                 losses_q[0] += loss_q
 
@@ -116,7 +109,7 @@ class Meta(nn.Module):
             # this is the loss and accuracy after the first update
             with torch.no_grad():
                 # [setsz, nway]
-                logits_q = self.net(x_qry[i], fast_weights, bn_training=True)
+                logits_q = self.net(x_qry[i])
                 loss_q = F.cross_entropy(logits_q, y_qry[i])
                 losses_q[1] += loss_q
                 # [setsz]
@@ -126,14 +119,17 @@ class Meta(nn.Module):
 
             for k in range(1, self.update_step):
                 # 1. run the i-th task and compute loss for k=1~K-1
-                logits = self.net(x_spt[i], fast_weights, bn_training=True)
+                logits = self.net(x_spt[i])
                 loss = F.cross_entropy(logits, y_spt[i])
+                print(f'Loss: {loss}')
                 # 2. compute grad on theta_pi
-                grad = torch.autograd.grad(loss, fast_weights)
+                print(f"fast_weights: {fast_weights}")
+                grad = torch.autograd.grad(loss, fast_weights,allow_unused=True)
                 # 3. theta_pi = theta_pi - train_lr * grad
+                print(f'grad: {grad}')
                 fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, fast_weights)))
 
-                logits_q = self.net(x_qry[i], fast_weights, bn_training=True)
+                logits_q = self.net(x_qry[i], fast_weights)
                 # loss_q will be overwritten and just keep the loss_q on last update step.
                 loss_q = F.cross_entropy(logits_q, y_qry[i])
                 losses_q[k + 1] += loss_q

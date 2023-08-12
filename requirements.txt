@@ -3,3 +3,8 @@ torchvision
 torchaudio
 numpy
 scipy
+tensorboard
+visdom
+Pillow
+tqdm
+torch-tb-profiler

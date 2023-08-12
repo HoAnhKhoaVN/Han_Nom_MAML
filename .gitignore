@@ -4,3 +4,11 @@ omniglot
 .idea
 .venv
 __pycache__
+learner.py
+miniimagenet_train.py
+omniglotNShot.py
+dataset
+miniimagenet_train.py
+MiniImagenet.py
+omniglot.py
+
