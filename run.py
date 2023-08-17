@@ -72,6 +72,7 @@ def main():
     argparser.add_argument('--seed', type=int, help='seet for reproduce', default=2103)
 
     args = argparser.parse_args()
+    print(f'args: {args}')
     # endregion
 
     # region Experiment placeholder
@@ -93,7 +94,7 @@ def main():
     # endregion
 
     # region Set up the Han-Nom loader.
-    device = 'cuda:0' if torch.cuda.is_available() and args.cuda else 'cpu'
+    device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
     
     print(f'batch_size: {args.task_num}')
     db_train = HanNomDatasetNShot(
@@ -148,7 +149,8 @@ def main():
         update_step=args.update_step,
         update_step_test= args.update_step_test,
         writer= writer,
-        best_model_path=best_model_path
+        best_model_path=best_model_path,
+        epoch_test= args.epoch_test,
         )
     # endregion
     
@@ -156,13 +158,14 @@ def main():
     net.load_state_dict(
         torch.load(best_model_path)
     )
-    evaluate(
+    acc, loss = evaluate(
         db = db_test,
         net = net,
         device= device,
-        test_epoch= args.test_epoch,
+        test_epoch= args.epoch_test,
         update_step_test= args.update_step_test
     )
+    print(f'Test acc: {acc} - loss: {loss}')
     # endregion
 
 def train(
@@ -176,8 +179,9 @@ def train(
     best_model_path : str,
     update_step: int = 10,
     update_step_test: int = 10,
+    epoch_test: int = 1
     ):
-
+    net = net.to(device)
     net.train()
     best_val_acc = -1
 
@@ -212,7 +216,6 @@ def train(
                 # your network's parameters as they are being updated.
                 for _ in range(update_step): # Train on support set
                     spt_logits = fnet(x_spt[i])
-                    print(f'x_spt[i] size = {x_spt[i].size()}')
                     spt_loss = F.cross_entropy(spt_logits, y_spt[i])
                     diffopt.step(spt_loss)
 
@@ -234,7 +237,7 @@ def train(
         meta_opt.step()
         qry_losses = sum(qry_losses) / task_num
         qry_accs = 100. * sum(qry_accs) / task_num
-        if step % 1 == 0: # Validation on valid and save model
+        if step % 5 == 0: # Validation on valid and save model
             print(
                 f'[Step {step:.2f}] Train Loss: {qry_losses:.2f} | Acc: {qry_accs:.2f}'
             )
@@ -249,7 +252,7 @@ def train(
             val_acc, val_loss = evaluate(
                 db = db_val,
                 net = net,
-                test_epoch= 1000//task_num,
+                test_epoch= epoch_test,
                 update_step_test= update_step_test,
                 device= device
             )
@@ -275,55 +278,6 @@ def train(
               best_val_acc = val_acc
             # endregion
 
-def evaluate_one_task(
-    x_spt: torch.Tensor, # [setsz, c_, h, w]
-    y_spt: torch.Tensor, # [setsz]
-    x_qry: torch.Tensor, # [querysz, c_, h, w]
-    y_qry: torch.Tensor, # [querysz]
-    net: MobileNetV2,
-    task_num : int,
-    update_step_test: int = 10 # Number of steps to train in evaluation
-)-> float:
-    qry_losses = []
-    qry_accs = []
-    assert len(x_spt.shape) == 4
-
-    
-    copy_net = deepcopy(net)
-
-    # TODO: Maybe pull this out into a separate module so it
-    # doesn't have to be duplicated between `train` and `test`?
-    # n_inner_iter = 5
-    inner_opt = torch.optim.SGD(net.parameters(), lr=1e-1)
-    
-    for i in range(task_num): # EX: 32 tasks
-        with higher.innerloop_ctx(net, inner_opt, track_higher_grads=False) as (copy_net, diffopt):
-            # Optimize the likelihood of the support set by taking
-            # gradient steps w.r.t. the model's parameters.
-            # This adapts the model's meta-parameters to the task.
-            # region Training on support set
-            for _ in range(update_step_test):
-                print(f'x_spt[i] size = {x_spt[i].unsqueeze(dim=0).size()}')
-                spt_logits = copy_net(x_spt[i])
-                
-                spt_loss = F.cross_entropy(spt_logits, y_spt[i])
-                diffopt.step(spt_loss)
-            # endregion
-
-            # region Test on query set
-            # The query loss and acc induced by these parameters.
-            qry_logits = copy_net(x_qry[i].unsqueeze(dim=0)).detach()
-            qry_loss = F.cross_entropy(
-                qry_logits, y_qry[i], reduction='none')
-            qry_losses.append(qry_loss.detach())
-            qry_accs.append(
-                (qry_logits.argmax(dim=1) == y_qry[i]).detach())
-            # endregion
-    del copy_net
-    qry_losses = sum(qry_losses) / task_num
-    qry_accs = 100. * sum(qry_accs) / task_num
-    return qry_accs, qry_losses
-
 def evaluate(
     db: HanNomDatasetNShot,
     net: MobileNetV2,
@@ -336,35 +290,38 @@ def evaluate(
     # Most research papers using MAML for this task do an extra
     # stage of fine-tuning here that should be added if you are
     # adapting this code for research.
-    losses = []
-    accs = []
-    copy_net = deepcopy(net)
+    copy_net = deepcopy(net).to(device)
+    qry_accs = []
+    qry_losses = []
+    # num_task = 0
     for step in range(test_epoch):
         x_spt, y_spt, x_qry, y_qry = db.next()
         x_spt, y_spt, x_qry, y_qry = torch.from_numpy(x_spt).to(device), torch.from_numpy(y_spt).to(device), \
                                 torch.from_numpy(x_qry).to(device), torch.from_numpy(y_qry).to(device)
         task_num, setsz, c_, h, w = x_spt.size()
+        # num_task+=task_num
+        querysz = x_qry.size(1)
 
-        qry_accs = []
+
         inner_opt = torch.optim.SGD(net.parameters(), lr=1e-1)
         for i in range(task_num):
             with higher.innerloop_ctx(
                 net, inner_opt, copy_initial_weights=False
-            ) as (fnet, diffopt):
+            ) as (copy_net, diffopt):
                 # Optimize the likelihood of the support set by taking
                 # gradient steps w.r.t. the model's parameters.
                 # This adapts the model's meta-parameters to the task.
                 # higher is able to automatically keep copies of
                 # your network's parameters as they are being updated.
                 for _ in range(update_step_test): # Train on support set
-                    spt_logits = fnet(x_spt[i])
+                    spt_logits = copy_net(x_spt[i])
                     spt_loss = F.cross_entropy(spt_logits, y_spt[i])
                     diffopt.step(spt_loss)
 
                 # The final set of adapted parameters will induce some
                 # final loss and accuracy on the query dataset.
                 # These will be used to update the model's meta-parameters.
-                qry_logits = net(x_qry[i])
+                qry_logits = copy_net(x_qry[i])
                 qry_loss = F.cross_entropy(qry_logits, y_qry[i]) # Test on query set
                 qry_losses.append(qry_loss.detach())
                 qry_acc = (qry_logits.argmax(
@@ -374,16 +331,14 @@ def evaluate(
                 # Update the model's meta-parameters to optimize the query
                 # losses across all of the tasks sampled in this batch.
                 # This unrolls through the gradient steps.
-                qry_loss.backward() # Update meta model following task 
+                # qry_loss.backward() # Update meta model following task 
 
-        qry_losses = sum(qry_losses) / task_num
-        qry_accs = 100. * sum(qry_accs) / task_num
+    qry_losses = sum(qry_losses) / len(qry_losses)
+    qry_accs = 100. * sum(qry_accs) / len(qry_accs)
 
     # region calculate mean on valid set
-    acc = sum(qry_accs) / len(qry_accs)
-    loss = sum(qry_losses) / len(qry_losses)
     # endregion
-    return acc, loss
+    return qry_accs, qry_losses
     
 
 # Won't need this after this PR is merged in:
