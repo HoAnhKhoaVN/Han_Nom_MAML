@@ -123,7 +123,12 @@ class Learner(nn.Module):
 
 
 
-    def forward(self, x, vars=None, bn_training=True):
+    def forward(
+            self,
+            x,
+            vars=None,
+            bn_training=True
+        ):
         """
         This function can be called by finetunning, however, in finetunning, we dont wish to update
         running_mean/running_var. Thought weights/bias of bn is updated, it has been separated by fast_weights.

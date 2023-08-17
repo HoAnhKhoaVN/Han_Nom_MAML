@@ -5,11 +5,10 @@ from    torch.nn import functional as F
 from    torch.utils.data import TensorDataset, DataLoader
 from    torch import optim
 import  numpy as np
-from    mobilenet import MyMobileNetV2
+
 from    learner import Learner
 from    copy import deepcopy
-from    typing import List, Tuple, Text
-
+from mobilenetv2 import MobileNetV2
 
 
 
@@ -17,7 +16,7 @@ class Meta(nn.Module):
     """
     Meta Learner
     """
-    def __init__(self, args, num_class = None):
+    def __init__(self, args, num_class):
         """
 
         :param args:
@@ -35,18 +34,11 @@ class Meta(nn.Module):
 
 
         # self.net = Learner(config, args.imgc, args.imgsz)
-        self.net = MyMobileNetV2(num_class)
-
-        filtered_parameters = []
-        params_num = []
-        for p in filter(lambda p: p.requires_grad, self.net.parameters()):
-            filtered_parameters.append(p)
-            params_num.append(np.prod(p.size()))
-        print('Trainable params num : ', sum(params_num))
-
-        # optimizer
-        # self.meta_optim = optim.Adadelta(filtered_parameters, lr=1.0, rho = 0.9, eps = 1e-05)
+        self.net = MobileNetV2(num_classes=num_class)
         self.meta_optim = optim.Adam(self.net.parameters(), lr=self.meta_lr)
+
+
+
 
     def clip_grad_by_norm_(self, grad, max_norm):
         """
@@ -88,13 +80,14 @@ class Meta(nn.Module):
         corrects = [0 for _ in range(self.update_step + 1)]
 
 
-        for i in range(task_num): # outer
+        for i in range(task_num):
 
             # 1. run the i-th task and compute loss for k=0
             logits = self.net(x_spt[i])
             loss = F.cross_entropy(logits, y_spt[i])
             grad = torch.autograd.grad(loss, self.net.parameters())
             fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, self.net.parameters())))
+
             # this is the loss and accuracy before first update
             with torch.no_grad():
                 # [setsz, nway]
@@ -119,14 +112,11 @@ class Meta(nn.Module):
 
             for k in range(1, self.update_step):
                 # 1. run the i-th task and compute loss for k=1~K-1
-                logits = self.net(x_spt[i])
+                logits = self.net(x_spt[i], fast_weights)
                 loss = F.cross_entropy(logits, y_spt[i])
-                print(f'Loss: {loss}')
                 # 2. compute grad on theta_pi
-                print(f"fast_weights: {fast_weights}")
-                grad = torch.autograd.grad(loss, fast_weights,allow_unused=True)
+                grad = torch.autograd.grad(loss, fast_weights)
                 # 3. theta_pi = theta_pi - train_lr * grad
-                print(f'grad: {grad}')
                 fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, fast_weights)))
 
                 logits_q = self.net(x_qry[i], fast_weights)

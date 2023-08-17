@@ -109,4 +109,20 @@ if __name__ == '__main__':
     argparser.add_argument('--cuda', action='store_true', help='enables cuda')
     args = argparser.parse_args()
 
+    # args.root = '../../Dataset/demo_ds'
+    # args.epoch = '1'
+    # args.n_ways = 5
+    # args.k_spt = 1
+    # args.k_qry = 15
+    # args.imgsz = 28
+    # args.imgc = 1
+    # args.task_num = 32
+    # args.meta_lr = 
+    # args.update_lr
+    # args.update_step
+    # args.update_step_test
+    # args.cuda
+
+
+    
     main(args)

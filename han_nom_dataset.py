@@ -101,6 +101,7 @@ class HanNomDatasetNShot(Dataset):
         # endregion
 
         self.batchsz = batchsz
+        print(f'batchsz = {batchsz}')
         self.n_cls = self.x.shape[0]  # 1623
         self.n_way = n_way  # n way
         self.k_shot = k_shot  # k shot
@@ -210,18 +211,13 @@ class ClassificationDataset(Dataset):
 if __name__ == '__main__':
     DS_PATH = 'D:/Master/term_2/NLP/22C15033/Code/Dataset/demo_ds'
     import  torch
-    # import  visdom
-
-    # plt.ion()
-    # viz = visdom.Visdom(env='omniglot_view')
-
     db = HanNomDatasetNShot(
         mode = 'train',
         root= DS_PATH,
         batchsz=20,
         n_way=5,
         k_shot=5,
-        k_query=15,
+        k_query=5,
         imgsz=32
     )
 
@@ -234,12 +230,16 @@ if __name__ == '__main__':
         x_qry = torch.from_numpy(x_qry)
         y_spt = torch.from_numpy(y_spt)
         y_qry = torch.from_numpy(y_qry)
-        print(f'''
-        - x_spt : {x_spt}
-        - y_spt : {y_spt}
-        - y_qry : {y_qry}
-        - x_qry : {x_qry}
-        ''')
+
+        task_num, setsz, c_, h, w = x_spt.size()
+        print(f'task_num: {task_num}')
+        
+        # print(f'''
+        # - x_spt : {x_spt}
+        # - y_spt : {y_spt}
+        # - y_qry : {y_qry}
+        # - x_qry : {x_qry}
+        # ''')
         break
         # batchsz, setsz, c, h, w = x_spt.size()
 
