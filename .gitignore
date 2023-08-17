@@ -14,3 +14,8 @@ omniglot.py
 test_exp
 few_shot_learning_system.py
 han_nom_maml_train.py
+meta.py
+mobilenet.py
+omniglot_train.py
+run_han_nom.sh
+test.py
