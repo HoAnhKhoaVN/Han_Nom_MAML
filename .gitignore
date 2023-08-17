@@ -19,3 +19,4 @@ mobilenet.py
 omniglot_train.py
 run_han_nom.sh
 test.py
+res
