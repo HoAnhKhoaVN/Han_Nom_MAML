@@ -201,7 +201,7 @@ def train(
         qry_losses = []
         qry_accs = []
         meta_opt.zero_grad()
-        for i in tqdm(range(task_num), desc = "Progress task num: "):
+        for i in range(task_num):
             with higher.innerloop_ctx(
                 net, inner_opt, copy_initial_weights=False
             ) as (fnet, diffopt):
@@ -212,6 +212,7 @@ def train(
                 # your network's parameters as they are being updated.
                 for _ in range(update_step): # Train on support set
                     spt_logits = fnet(x_spt[i])
+                    print(f'x_spt[i] size = {x_spt[i].size()}')
                     spt_loss = F.cross_entropy(spt_logits, y_spt[i])
                     diffopt.step(spt_loss)
 
@@ -302,14 +303,16 @@ def evaluate_one_task(
             # This adapts the model's meta-parameters to the task.
             # region Training on support set
             for _ in range(update_step_test):
+                print(f'x_spt[i] size = {x_spt[i].unsqueeze(dim=0).size()}')
                 spt_logits = copy_net(x_spt[i])
+                
                 spt_loss = F.cross_entropy(spt_logits, y_spt[i])
                 diffopt.step(spt_loss)
             # endregion
 
             # region Test on query set
             # The query loss and acc induced by these parameters.
-            qry_logits = copy_net(x_qry[i]).detach()
+            qry_logits = copy_net(x_qry[i].unsqueeze(dim=0)).detach()
             qry_loss = F.cross_entropy(
                 qry_logits, y_qry[i], reduction='none')
             qry_losses.append(qry_loss.detach())
@@ -333,28 +336,49 @@ def evaluate(
     # Most research papers using MAML for this task do an extra
     # stage of fine-tuning here that should be added if you are
     # adapting this code for research.
-    qry_losses = []
-    qry_accs = []
-    net.eval()
-    for batch_idx in range(test_epoch):
+    losses = []
+    accs = []
+    copy_net = deepcopy(net)
+    for step in range(test_epoch):
         x_spt, y_spt, x_qry, y_qry = db.next()
         x_spt, y_spt, x_qry, y_qry = torch.from_numpy(x_spt).to(device), torch.from_numpy(y_spt).to(device), \
                                 torch.from_numpy(x_qry).to(device), torch.from_numpy(y_qry).to(device)
         task_num, setsz, c_, h, w = x_spt.size()
 
-        # split to single task each time
-        for x_spt_one, y_spt_one, x_qry_one, y_qry_one in zip(x_spt, y_spt, x_qry, y_qry):
-            eval_acc, eval_loss = evaluate_one_task(
-                x_spt= x_spt_one,
-                y_spt= y_spt_one,
-                x_qry= x_qry_one,
-                y_qry= y_qry_one,
-                task_num = task_num,
-                update_step_test= update_step_test,
-            )
+        qry_accs = []
+        inner_opt = torch.optim.SGD(net.parameters(), lr=1e-1)
+        for i in range(task_num):
+            with higher.innerloop_ctx(
+                net, inner_opt, copy_initial_weights=False
+            ) as (fnet, diffopt):
+                # Optimize the likelihood of the support set by taking
+                # gradient steps w.r.t. the model's parameters.
+                # This adapts the model's meta-parameters to the task.
+                # higher is able to automatically keep copies of
+                # your network's parameters as they are being updated.
+                for _ in range(update_step_test): # Train on support set
+                    spt_logits = fnet(x_spt[i])
+                    spt_loss = F.cross_entropy(spt_logits, y_spt[i])
+                    diffopt.step(spt_loss)
 
-            qry_accs.append(eval_acc)
-            qry_losses.append(eval_loss)
+                # The final set of adapted parameters will induce some
+                # final loss and accuracy on the query dataset.
+                # These will be used to update the model's meta-parameters.
+                qry_logits = net(x_qry[i])
+                qry_loss = F.cross_entropy(qry_logits, y_qry[i]) # Test on query set
+                qry_losses.append(qry_loss.detach())
+                qry_acc = (qry_logits.argmax(
+                    dim=1) == y_qry[i]).sum().item() / querysz
+                qry_accs.append(qry_acc)
+
+                # Update the model's meta-parameters to optimize the query
+                # losses across all of the tasks sampled in this batch.
+                # This unrolls through the gradient steps.
+                qry_loss.backward() # Update meta model following task 
+
+        qry_losses = sum(qry_losses) / task_num
+        qry_accs = 100. * sum(qry_accs) / task_num
+
     # region calculate mean on valid set
     acc = sum(qry_accs) / len(qry_accs)
     loss = sum(qry_losses) / len(qry_losses)

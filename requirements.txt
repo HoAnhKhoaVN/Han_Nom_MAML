@@ -7,3 +7,4 @@ tensorboard
 Pillow
 tqdm
 torch-tb-profiler
+higher

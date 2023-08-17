@@ -1,5 +1,8 @@
 python run.py --epoch 1 \
-                        --root '../../Dataset/demo_ds' \
-                        --imgsz 32 \
-                        --task_num 1 \
-                        --exp 'test_exp' \
+              --root /content/dataset_han_nom \
+              --imgsz 32 \
+              --task_num 2 \
+              --exp 'test_exp' \
+              --n_way 5 \
+              --k_spt 5 \
+              --k_qry 5 \

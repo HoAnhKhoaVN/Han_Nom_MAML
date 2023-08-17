@@ -5,6 +5,7 @@ from torch import LongTensor, tensor, int64, from_numpy
 from PIL import Image
 import os
 import numpy as np
+from pickle import dump
 
 IMG_CACHE = {}
 class HanNomDataset(Dataset):
@@ -32,6 +33,8 @@ class HanNomDataset(Dataset):
         x = x.resize((32, 32))
         shape = 3, x.size[0], x.size[1]
         x = np.array(x, np.float32, copy=False)
+        # x /=255
+        # x = x.reshape(shape)
         x = from_numpy(x/255)
         x = x.transpose(0, 1).contiguous().view(shape)
 
@@ -81,20 +84,23 @@ class HanNomDatasetNShot(Dataset):
                 temp[label].append(img)
             else:
                 temp[label] = [img]
+        # endregion
+
+        # region convert to numpy array
         self.x = []
         for label, imgs in temp.items():  # labels info deserted , each label contains 20imgs
-            self.x.append(np.array(imgs))
+            tmp = []
+            for img in imgs:
+                tmp.append([img.numpy()])
+            self.x.append(np.concatenate(tmp, axis=0))
+
+        tmp_x = list(map(lambda _x: [np.array(_x)[:10]], self.x)) # min imgs in each class is 10
+        self.x = np.concatenate(tmp_x, axis = 0) # [[20 imgs],..., 1623 classes in total]
         # endregion
+        print(f'self.x.shape: {self.x.shape}')
 
-
-        # region change type label
-        # as different class may have different number of imgs
-        self.x = np.array(self.x).astype(np.float32)  # [[20 imgs],..., 1623 classes in total]
-        print(f'temp: {len(temp)}')
-        print('self.x.shape: ',self.x.shape)
         # each character contains 20 imgs
         print('data shape:', self.x.shape)  # [1623, 20, 84, 84, 1]
-        # endregion
 
         # region get class
         self.num_classes = self.x.shape[0]
@@ -137,7 +143,7 @@ class HanNomDatasetNShot(Dataset):
 
                 for j, cur_class in enumerate(selected_cls):
 
-                    selected_img = np.random.choice(20, self.k_shot + self.k_query, False)
+                    selected_img = np.random.choice(10, self.k_shot + self.k_query, False)
 
                     # meta-training and meta-test
                     x_spt.append(data_pack[cur_class][selected_img[:self.k_shot]])
@@ -161,10 +167,10 @@ class HanNomDatasetNShot(Dataset):
 
 
             # [b, setsz, 3, 32, 32]
-            x_spts = np.array(x_spts).astype(np.float32).reshape(self.batchsz, setsz, 3, self.resize, self.resize)
+            x_spts = np.array(x_spts).reshape(self.batchsz, setsz, 3, self.resize, self.resize)
             y_spts = np.array(y_spts).astype(np.int64).reshape(self.batchsz, setsz)
             # [b, qrysz, 3, 32, 32]
-            x_qrys = np.array(x_qrys).astype(np.float32).reshape(self.batchsz, querysz, 3, self.resize, self.resize)
+            x_qrys = np.array(x_qrys).reshape(self.batchsz, querysz, 3, self.resize, self.resize)
             y_qrys = np.array(y_qrys).astype(np.int64).reshape(self.batchsz, querysz)
 
             data_cache.append([x_spts, y_spts, x_qrys, y_qrys])
@@ -209,7 +215,7 @@ class ClassificationDataset(Dataset):
         
 
 if __name__ == '__main__':
-    DS_PATH = 'D:/Master/term_2/NLP/22C15033/Code/Dataset/demo_ds'
+    DS_PATH = '/content/dataset_han_nom'
     import  torch
     db = HanNomDatasetNShot(
         mode = 'train',
