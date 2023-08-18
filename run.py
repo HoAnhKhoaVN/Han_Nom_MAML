@@ -186,7 +186,9 @@ def train(
     net.train()
     best_val_acc = -1
 
-    for step in range(epoch): 
+    for step in range(epoch):
+        print(f'Step: {step + 1}')
+        start_time = time.time()
         # Sample a batch of support and query images and labels.
         x_spt, y_spt, x_qry, y_qry = db_train.next()
         x_spt, y_spt, x_qry, y_qry = torch.from_numpy(x_spt).to(device), torch.from_numpy(y_spt).to(device), \
@@ -238,9 +240,11 @@ def train(
         meta_opt.step()
         qry_losses = sum(qry_losses) / task_num
         qry_accs = 100. * sum(qry_accs) / task_num
-        if step % 50 == 0: # Validation on valid and save model
+        end_time = time.time()
+        print(f'Training step: {step + 1}: {(end_time-start_time)} seconds')
+        if step % 5 == 0: # Validation on valid and save model
             print(
-                f'[Step {step:.2f}] Train Loss: {qry_losses:.2f} | Acc: {qry_accs:.2f}'
+                f'[Validation on step {step + 1}] Train Loss: {qry_losses:.2f} | Acc: {qry_accs:.2f}'
             )
             writer.add_scalar('Train loss',
                     qry_losses,
@@ -249,7 +253,8 @@ def train(
             writer.add_scalar('Train Acc',
                     qry_accs,
                     step)
-
+            
+            val_start_time = time.time()
             val_acc, val_loss = evaluate(
                 db = db_val,
                 net = net,
@@ -257,7 +262,8 @@ def train(
                 update_step_test= update_step_test,
                 device= device
             )
-
+            val_end_time = time.time()
+            print(f'Time to evaluate: {(val_end_time - val_start_time)} seconds')
             postfix = ' (Best)' if val_acc >= best_val_acc else ' (Best: {})'.format(
               best_val_acc)
             
@@ -333,7 +339,7 @@ def evaluate(
                 # losses across all of the tasks sampled in this batch.
                 # This unrolls through the gradient steps.
                 # qry_loss.backward() # Update meta model following task 
-
+    del copy_net
     qry_losses = sum(qry_losses) / len(qry_losses)
     qry_accs = 100. * sum(qry_accs) / len(qry_accs)
 
