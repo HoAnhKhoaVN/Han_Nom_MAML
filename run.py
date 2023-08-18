@@ -62,6 +62,7 @@ def main():
     argparser.add_argument('--k_spt', type=int, help='k shot for support set', default=5)
     argparser.add_argument('--k_qry', type=int, help='k shot for query set', default=5)
     argparser.add_argument('--imgsz', type=int, help='imgsz', default=28)
+    argparser.add_argument('--val_iter', type=int, help='validation iteration', default=10)
     argparser.add_argument('--imgc', type=int, help='imgc', default=1)
     argparser.add_argument('--task_num', type=int, help='meta batch size, namely task num', default=32)
     argparser.add_argument('--meta_lr', type=float, help='meta-level outer learning rate', default=1e-3)
@@ -237,7 +238,7 @@ def train(
         meta_opt.step()
         qry_losses = sum(qry_losses) / task_num
         qry_accs = 100. * sum(qry_accs) / task_num
-        if step % 5 == 0: # Validation on valid and save model
+        if step % 50 == 0: # Validation on valid and save model
             print(
                 f'[Step {step:.2f}] Train Loss: {qry_losses:.2f} | Acc: {qry_accs:.2f}'
             )
