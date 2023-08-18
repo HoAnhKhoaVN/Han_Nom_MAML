@@ -50,6 +50,31 @@ from mobilenetv2 import MobileNetV2
 import os
 from torch.utils.tensorboard import SummaryWriter
 from pickle import dump, load
+from os import path
+
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+def init_model(
+    checkpoint_path: str,
+    num_classes: int,
+):
+    # region
+    model = MobileNetV2(num_classes = num_classes).to(device)
+    # endregion
+
+    # region Load checkpoints if available
+    if path.exists(checkpoint_path):
+        print(f'loading pretrained model from {checkpoint_path}')
+        model.load_state_dict(
+            torch.load(
+                path.join(checkpoint_path)
+            )
+        )
+    # endregion
+    return model
+
+
 
 def main():
     # region arguments
@@ -71,6 +96,11 @@ def main():
     argparser.add_argument('--update_step_test', type=int, help='update steps for finetunning', default=10)
     argparser.add_argument('--cuda', action='store_true', help='enables cuda')
     argparser.add_argument('--seed', type=int, help='seet for reproduce', default=2103)
+    argparser.add_argument('--checkpoint_path',
+                        type=str,
+                        help='root where to store checkpoit to init weight for model',
+                        default='..' + os.sep + 'output')
+
 
     args = argparser.parse_args()
     print(f'args: {args}')
@@ -131,7 +161,15 @@ def main():
     # endregion
 
     # region get model and optimizer parameters
-    net = MobileNetV2(num_classes=3964)
+    # net = MobileNetV2(num_classes=3964)
+
+    # region get model
+    net = init_model(
+        checkpoint_path = args.checkpoint_path,
+        num_classes= 3964,
+    )
+    # endregion
+
 
     # We will use Adam to (meta-)optimize the initial parameters
     # to be adapted.
