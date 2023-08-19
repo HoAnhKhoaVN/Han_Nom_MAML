@@ -178,7 +178,7 @@ def main():
     # endregion
 
     # region Training
-    if args.train is not None:
+    if args.train:
         best_model_path = os.path.join(exp_path, 'best_model.pth')
         train(
             db_train=db_train,
@@ -196,7 +196,7 @@ def main():
     # endregion
     
     # region Testing
-    if args.test is not None:
+    if args.test:
         net.load_state_dict(
             torch.load(best_model_path)
         )
