@@ -128,35 +128,36 @@ def main():
     device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
     
     print(f'batch_size: {args.task_num}')
-    db_train = HanNomDatasetNShot(
-        mode = 'train',
-        root= args.root,
-        batchsz=args.task_num,
-        n_way=args.n_way,
-        k_shot=args.k_spt,
-        k_query=args.k_qry,
-        imgsz=args.imgsz
-    )
+    if args.train is not None:
+        db_train = HanNomDatasetNShot(
+            mode = 'train',
+            root= args.root,
+            batchsz=args.task_num,
+            n_way=args.n_way,
+            k_shot=args.k_spt,
+            k_query=args.k_qry,
+            imgsz=args.imgsz
+        )
 
-    db_val = HanNomDatasetNShot(
-        mode = 'val',
-        root= args.root,
-        batchsz=args.task_num,
-        n_way=args.n_way,
-        k_shot=args.k_spt,
-        k_query=args.k_qry,
-        imgsz=args.imgsz
-    )
-
-    db_test = HanNomDatasetNShot(
-        mode = 'test',
-        root= args.root,
-        batchsz=args.task_num,
-        n_way=args.n_way,
-        k_shot=args.k_spt,
-        k_query=args.k_qry,
-        imgsz=args.imgsz
-    )
+        db_val = HanNomDatasetNShot(
+            mode = 'val',
+            root= args.root,
+            batchsz=args.task_num,
+            n_way=args.n_way,
+            k_shot=args.k_spt,
+            k_query=args.k_qry,
+            imgsz=args.imgsz
+        )
+    if args.test is not None:
+        db_test = HanNomDatasetNShot(
+            mode = 'test',
+            root= args.root,
+            batchsz=args.task_num,
+            n_way=args.n_way,
+            k_shot=args.k_spt,
+            k_query=args.k_qry,
+            imgsz=args.imgsz
+        )
 
     # endregion
 
@@ -177,34 +178,36 @@ def main():
     # endregion
 
     # region Training
-    best_model_path = os.path.join(exp_path, 'best_model.pth')
-    train(
-        db_train=db_train,
-        db_val= db_val,
-        net = net,
-        device = device,
-        meta_opt= meta_opt,
-        epoch= args.epoch,
-        update_step=args.update_step,
-        update_step_test= args.update_step_test,
-        writer= writer,
-        best_model_path=best_model_path,
-        epoch_test= args.epoch_test,
-        )
+    if args.train is not None:
+        best_model_path = os.path.join(exp_path, 'best_model.pth')
+        train(
+            db_train=db_train,
+            db_val= db_val,
+            net = net,
+            device = device,
+            meta_opt= meta_opt,
+            epoch= args.epoch,
+            update_step=args.update_step,
+            update_step_test= args.update_step_test,
+            writer= writer,
+            best_model_path=best_model_path,
+            epoch_test= args.epoch_test,
+            )
     # endregion
     
     # region Testing
-    net.load_state_dict(
-        torch.load(best_model_path)
-    )
-    acc, loss = evaluate(
-        db = db_test,
-        net = net,
-        device= device,
-        test_epoch= args.epoch_test,
-        update_step_test= args.update_step_test
-    )
-    print(f'Test acc: {acc} - loss: {loss}')
+    if args.test is not None:
+        net.load_state_dict(
+            torch.load(best_model_path)
+        )
+        acc, loss = evaluate(
+            db = db_test,
+            net = net,
+            device= device,
+            test_epoch= args.epoch_test,
+            update_step_test= args.update_step_test
+        )
+        print(f'Test acc: {acc} - loss: {loss}')
     # endregion
 
 def train(
