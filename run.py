@@ -100,6 +100,15 @@ def main():
                         type=str,
                         help='root where to store checkpoit to init weight for model',
                         default='..' + os.sep + 'output')
+    argparser.add_argument('--test',
+                        type = bool,
+                        default= True, 
+                        help='Test mode')
+    
+    argparser.add_argument('--train',
+                        type = bool,
+                        default= True, 
+                        help='Train mode')
 
 
     args = argparser.parse_args()
